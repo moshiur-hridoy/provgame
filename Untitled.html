@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Clarity Quest: Problem Framing Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none; /* Prevents pull-to-refresh on mobile */
+        }
+        .choice-button {
+            transition: background-color 0.3s ease, transform 0.1s ease;
+        }
+        .choice-button:hover {
+            background-color: #4f46e5; /* indigo-700 */
+        }
+        .choice-button:active {
+            transform: scale(0.98);
+        }
+        .image-placeholder {
+            background-color: #e5e7eb; /* gray-200 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #6b7280; /* gray-500 */
+            font-size: 0.875rem; /* text-sm */
+            border-radius: 0.5rem; /* rounded-lg */
+        }
+        .modal {
+            display: none; /* Hidden by default */
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5); /* Dim background */
+            align-items: center; /* Vertically center */
+            justify-content: center; /* Horizontally center */
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 0.5rem; /* rounded-lg */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .modal-close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .modal-close-button:hover,
+        .modal-close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        /* Spinner for loading states */
+        .spinner, .llm-spinner-animation {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #4f46e5; /* indigo-600 */
+            animation: spin 1s ease infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .llm-loading-indicator {
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            margin-top: 8px;
+            color: #a5b4fc; /* indigo-300 */
+        }
+        .llm-spinner-animation {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 flex flex-col items-center justify-center min-h-screen p-4 selection:bg-indigo-500 selection:text-white">
+
+    <div id="gameContainer" class="w-full max-w-3xl bg-slate-800 shadow-2xl rounded-xl p-6 md:p-8">
+        <header class="mb-6 flex justify-between items-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-indigo-400">The Clarity Quest</h1>
+            <div class="text-right">
+                <p class="text-sm text-slate-400">Clarity Score</p>
+                <p id="clarityScore" class="text-2xl font-semibold text-indigo-300">0</p>
+            </div>
+        </header>
+
+        <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+            <div id="sceneImageContainer" class="md:col-span-2 h-48 md:h-64 image-placeholder relative">
+                <img id="sceneImage" src="https://placehold.co/600x400/334155/cbd5e1?text=Loading+Scene..." alt="Current Scene" class="w-full h-full object-cover rounded-lg shadow-md">
+                <div id="sceneImageSpinner" class="absolute inset-0 flex items-center justify-center bg-slate-700 bg-opacity-50 rounded-lg" style="display: none;">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+            <div id="characterPortraitContainer" class="h-48 md:h-64 image-placeholder relative flex flex-col items-center justify-center">
+                 <p id="characterName" class="font-semibold mb-2 text-center text-slate-300"></p>
+                <img id="characterImage" src="https://placehold.co/300x400/334155/cbd5e1?text=Character" alt="Character Portrait" class="w-3/4 h-3/4 object-contain rounded-lg">
+                 <div id="characterImageSpinner" class="absolute inset-0 flex items-center justify-center bg-slate-700 bg-opacity-50 rounded-lg" style="display: none;">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="storyText" class="mb-6 p-4 bg-slate-700 rounded-lg min-h-[100px] text-slate-200 leading-relaxed prose prose-invert max-w-none">
+            Loading game...
+        </div>
+
+        <div id="choicesArea" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+            </div>
+
+        <div id="feedbackArea" class="mb-6 p-3 bg-slate-700/50 rounded-lg text-sm text-slate-300 min-h-[50px]" style="display: none;">
+        </div>
+
+        <div id="aiMentorFeedbackArea" class="mb-6 p-3 bg-indigo-900/30 border border-indigo-700 rounded-lg text-sm text-indigo-200 min-h-[50px]" style="display: none;">
+            <p class="font-semibold text-indigo-400 mb-1">✨ Alex (AI Mentor) says:</p>
+            <div id="aiMentorText"></div>
+        </div>
+         <div id="llmLoadingIndicator" class="llm-loading-indicator">
+            <div class="llm-spinner-animation"></div>
+            <span>Thinking...</span>
+        </div>
+        
+        <div id="reflectionModal" class="modal">
+            <div class="modal-content bg-slate-800 text-slate-100">
+                <span id="reflectionModalClose" class="modal-close-button">&times;</span>
+                <h3 id="reflectionTitle" class="text-xl font-semibold mb-4 text-indigo-400">Reflection Time</h3>
+                <p id="reflectionQuestion" class="mb-4 text-slate-200"></p>
+                <textarea id="reflectionAnswer" rows="4" class="w-full p-2 rounded bg-slate-700 text-slate-100 border border-slate-600 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Your thoughts..."></textarea>
+                <button id="submitReflection" class="mt-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg choice-button">
+                    Continue
+                </button>
+            </div>
+        </div>
+
+         <div id="miniLessonModal" class="modal">
+            <div class="modal-content bg-slate-800 text-slate-100">
+                <span id="miniLessonModalClose" class="modal-close-button">&times;</span>
+                <h3 id="miniLessonTitle" class="text-xl font-semibold mb-4 text-indigo-400">Mini-Lesson</h3>
+                <div id="miniLessonContent" class="text-slate-200 prose prose-sm prose-invert max-w-none"></div>
+                <button id="closeMiniLesson" class="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg choice-button">
+                    Got it!
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        // --- Game Data ---
+        const characters = {
+            narrator: { name: "Narrator", prompt: "neutral, wise narrator avatar, minimalist, abstract" },
+            sarah: { name: "Sarah (Head of Sales)", prompt: "professional woman, sharp suit, determined expression, sales executive, corporate portrait style", concerns: "market share, competitor features, Q3 targets, quick wins" },
+            priya: { name: "Priya (Lead Engineer)", prompt: "thoughtful woman, engineer, casual but professional attire, slightly skeptical expression, tech office background", concerns: "technical debt, feasibility, scope creep, platform stability, sustainable solutions" },
+            chloe: { name: "Chloe (Marketing Lead)", prompt: "enthusiastic young woman, creative type, marketing professional, bright colors, energetic portrait", concerns: "brand perception, revolutionary features, campaign slogans" },
+            david: { name: "David (CEO)", prompt: "experienced male CEO, confident, visionary, business attire, modern office background", concerns: "market redefinition, game-changer innovation, strategic advantage, long-term vision" },
+            user_generic: { name: "User Interviewee", prompt: "diverse everyday person, thoughtful expression, user interview setting, relatable", concerns: "their specific pain points, usability, effectiveness of current tools" },
+            mentor: { name: "Alex (Your Mentor)", prompt: "experienced product strategist, friendly and wise, approachable, mentor figure, minimalist style", concerns: "good problem framing, avoiding bias, user-centricity, clear thinking" }
+        };
+        
+        // Store the player's current understanding/summary for AI features
+        let playerProblemSummary = "The Phoenix Project is currently ill-defined, with conflicting stakeholder expectations.";
+
+        const gameScenes = {
+            start: {
+                story: "The Zoom call ends, leaving a cacophony of opinions in its wake. The 'Phoenix Project' is the talk of the company, but everyone seems to have a different idea of what it is, or what problem it's supposed to solve. David (CEO) wants a 'game-changer.' Sarah (Sales) needs a 'quick win' for Q3. Priya (Engineering) is already worried about 'scope creep.' Your notebook is a mess. Where do you even begin?",
+                sceneImagePrompt: "abstract representation of digital meeting chaos, scattered notes, confused emojis, lightbulb icon, corporate blue and grey tones, digital art",
+                characterId: "narrator",
+                choices: [
+                    { text: "Schedule individual follow-ups with David, Sarah, and Priya to understand their underlying goals.", nextScene: "stakeholder_intro", scoreEffect: 5, feedback: "Good start! Individual conversations can cut through group noise and reveal deeper motivations. This helps in understanding diverse perspectives early on." },
+                    { text: "Draft a project proposal based on Sarah's 'quick win' idea. It seems the most urgent.", nextScene: "rushed_proposal", scoreEffect: -5, feedback: "Careful. Jumping to a solution based on urgency or the loudest voice can lead you to solve the wrong problem. This is a common pitfall called 'solution bias'." , miniLesson: "solutionBias"},
+                    { text: "Start researching competitor solutions for 'game-changing features.'", nextScene: "competitor_research_early", scoreEffect: -2, feedback: "While competitor analysis is important, doing it before understanding your own users' and stakeholders' core problems can lead you astray. You might end up mimicking features without addressing a genuine need." }
+                ]
+            },
+            stakeholder_intro: {
+                story: "You've decided to speak with key stakeholders individually. This is a crucial step in gathering diverse perspectives. Who do you approach first?",
+                sceneImagePrompt: "a calendar with multiple meetings highlighted, a thinking emoji, a path splitting into three, decision making concept, clean corporate graphics",
+                characterId: "narrator",
+                choices: [
+                    { text: "Talk to David (CEO) to understand the high-level vision.", nextScene: "talk_david", scoreEffect: 3, feedback: "Understanding the CEO's vision is important for strategic alignment. Remember to dig for the 'why' behind the vision."},
+                    { text: "Meet Sarah (Sales) to get insights on market demands and customer pressures.", nextScene: "talk_sarah", scoreEffect: 3, feedback: "Sales can offer valuable insights into immediate customer pain points and market realities. Be mindful of potential short-term focus."},
+                    { text: "Discuss with Priya (Engineering) to grasp technical feasibility and existing platform constraints.", nextScene: "talk_priya", scoreEffect: 3, feedback: "Engineering perspectives are vital for understanding what's possible and the potential complexities. This helps ground the problem in reality."}
+                ]
+            },
+            talk_david: {
+                story: () => `David leans back in his chair, "The Phoenix Project needs to be big. Something that redefines our position in the market. I'm trusting you to find that angle. We need to innovate, not just iterate!" He seems passionate but vague on specifics.`,
+                sceneImagePrompt: "modern CEO office, large window with city view, confident business person gesturing, visionary concept, sleek design",
+                characterId: "david",
+                choices: [
+                    { text: "Ask: 'What specific market shift or customer unmet need do you believe this innovation should address?'", nextScene: "david_clarify", scoreEffect: 5, feedback: "Excellent clarifying question! This pushes beyond buzzwords to the core problem space."},
+                    { text: "Nod and say: 'Understood. I'll focus on something revolutionary.'", nextScene: "david_agree_vague", scoreEffect: -3, feedback: "Agreeing without clarity can lead to misaligned efforts. 'Revolutionary' is subjective without a defined problem."},
+                ],
+                reflection: { title: "CEO's Vision", question: "David's vision is ambitious. What underlying assumptions might he be making about the market or users? How can you validate these?", context: "Player just heard David's ambitious but vague vision for the Phoenix Project." }
+            },
+            talk_sarah: {
+                story: () => `Sarah is direct. "Look, we're losing deals because competitor X has feature Y. We need something similar, fast, to hit Q3 targets. The Phoenix Project should be that. Can you make it happen?"`,
+                sceneImagePrompt: "dynamic sales office environment, charts showing downward trends, stressed but determined sales manager, urgency concept",
+                characterId: "sarah",
+                choices: [
+                    { text: "Ask: 'Besides feature Y, what are the core problems our clients are facing that lead them to competitor X?'", nextScene: "sarah_clarify", scoreEffect: 5, feedback: "Great question! This helps differentiate symptoms (missing feature) from root problems."},
+                    { text: "Promise: 'I'll prioritize feature Y in the Phoenix Project scope.'", nextScene: "sarah_promise_feature", scoreEffect: -4, feedback: "Committing to a specific solution this early, based on one stakeholder's immediate need, is risky. It bypasses deeper problem validation." , miniLesson: "rootCauseVsSymptom"},
+                ],
+                reflection: { title: "Sales Pressure", question: "Sarah is focused on a competitor's feature and Q3 targets. How can you address her immediate concerns while still ensuring you're framing the right long-term problem?", context: "Player just heard Sarah's demand for a quick feature to match a competitor." }
+            },
+            talk_priya: {
+                story: () => `Priya sighs, "Another big project. My main concern is our current tech debt. If Phoenix requires massive new infrastructure on top of what we're already struggling to maintain, it's a recipe for disaster. What exactly are we trying to build?"`,
+                sceneImagePrompt: "complex network diagram, server room with blinking lights, concerned engineer looking at code, technical debt concept",
+                characterId: "priya",
+                choices: [
+                    { text: "Acknowledge: 'That's a valid concern. My goal first is to define the *problem* clearly, so we can assess solutions, including their technical impact.'", nextScene: "priya_acknowledge", scoreEffect: 5, feedback: "Good. Acknowledging constraints and focusing on problem definition first builds trust with engineering."},
+                    { text: "Dismiss: 'Don't worry about the tech details yet, let's focus on the exciting possibilities!'", nextScene: "priya_dismiss", scoreEffect: -4, feedback: "Dismissing technical concerns can alienate key team members and lead to unfeasible problem definitions later."},
+                ],
+                reflection: { title: "Engineering Constraints", question: "Priya highlighted significant technical debt. How should this influence your problem framing process? What are the risks of ignoring her concerns?", context: "Player just heard Priya's concerns about tech debt and project feasibility." }
+            },
+            rushed_proposal: {
+                story: "You quickly draft a proposal around Sarah's 'quick win'. While she's pleased, Priya raises concerns about feasibility, and David feels it lacks ambition. The team seems more divided. Clarity Score took a hit.",
+                sceneImagePrompt: "document with many red comments, frustrated team members in a meeting, tangled wires, confusion concept",
+                characterId: "narrator",
+                choices: [ { text: "Go back and talk to stakeholders individually.", nextScene: "stakeholder_intro", scoreEffect: 2, feedback: "It's good to backtrack and gather more perspectives when things go off track." } ],
+                onEnter: () => { playerProblemSummary = "Attempted a quick win based on sales input, but it caused division and lacked strategic vision or technical consideration."; }
+            },
+            competitor_research_early: {
+                story: "Your competitor research yields a long list of features, but it's unclear which ones solve a real problem for *your* users or align with *your* company's strategy. You feel a bit lost in the data.",
+                sceneImagePrompt: "maze of features, person looking confused at multiple screens showing competitor websites, data overload concept",
+                characterId: "narrator",
+                choices: [ { text: "Focus on understanding internal stakeholder perspectives first.", nextScene: "stakeholder_intro", scoreEffect: 2, feedback: "Good choice. Internal alignment and understanding your own context is key before looking outwards extensively." } ],
+                onEnter: () => { playerProblemSummary = "Got lost in competitor features without first understanding internal context or user needs."; }
+            },
+            david_clarify: {
+                story: "David pauses, then says, 'That's the million-dollar question, isn't it? I suppose I'm seeing a gap in how small businesses manage their remote teams effectively. Our current tools only scratch the surface.' This is a more concrete starting point.",
+                sceneImagePrompt: "lightbulb turning on over CEO's head, a clearer path emerging from fog, business strategy concept",
+                characterId: "david",
+                choices: [ 
+                    { text: "Thank him and schedule a meeting with Sarah (Sales).", nextScene: "talk_sarah", scoreEffect: 2, feedback: "Good, you've got a slightly clearer direction from David. Time to gather more perspectives." },
+                    { text: "Thank him and schedule a meeting with Priya (Engineering).", nextScene: "talk_priya", scoreEffect: 2, feedback: "Good, you've got a slightly clearer direction from David. Understanding technical feasibility early is wise." }
+                ],
+                onEnter: () => { playerProblemSummary = "David (CEO) hinted at a problem around remote team management for small businesses."; }
+            },
+            david_agree_vague: {
+                story: "David smiles, but you sense you haven't truly pinned down the core problem he envisions solving. The 'revolutionary' idea remains elusive.",
+                sceneImagePrompt: "CEO smiling vaguely, a question mark hovering in the air, abstract art representing ambiguity",
+                characterId: "david",
+                choices: [ 
+                    { text: "Decide to talk to Sarah (Sales) next for a different angle.", nextScene: "talk_sarah", scoreEffect: 1, feedback: "Moving on to other stakeholders might provide more concrete details." },
+                    { text: "Decide to talk to Priya (Engineering) next for her perspective.", nextScene: "talk_priya", scoreEffect: 1, feedback: "Priya might offer a grounding perspective to David's vague ambitions." }
+                ],
+                onEnter: () => { playerProblemSummary = "Agreed with David's vague 'revolutionary' idea without getting specifics."; }
+            },
+             sarah_clarify: {
+                story: "Sarah thinks for a moment. 'Well, they complain about our onboarding being too complex compared to X. And our reporting isn't as flexible. It's not just one feature, it's the overall experience for new users.' This is more insightful.",
+                sceneImagePrompt: "sales manager looking thoughtful, customer journey map with pain points highlighted, user experience concept",
+                characterId: "sarah",
+                choices: [ 
+                    { text: "Thank her and schedule a meeting with David (CEO).", nextScene: "talk_david", scoreEffect: 2, feedback: "Useful insights from Sarah. Now to understand the strategic vision." },
+                    { text: "Thank her and schedule a meeting with Priya (Engineering).", nextScene: "talk_priya", scoreEffect: 2, feedback: "Useful insights from Sarah. Now to understand the technical side." }
+                ],
+                onEnter: () => { playerProblemSummary = "Sarah (Sales) clarified that user issues are broader than one feature, relating to complex onboarding and inflexible reporting."; }
+            },
+            sarah_promise_feature: {
+                story: "Sarah is pleased you're prioritizing the feature. However, you feel a nagging doubt that you're committing too early, without the full picture of the problem.",
+                sceneImagePrompt: "sales manager looking happy, a signed contract with a question mark, premature commitment concept",
+                characterId: "sarah",
+                choices: [ 
+                    { text: "Decide to talk to David (CEO) to align on strategy.", nextScene: "talk_david", scoreEffect: 1, feedback: "It's wise to check if this feature aligns with the broader strategy." },
+                    { text: "Decide to talk to Priya (Engineering) to get her take.", nextScene: "talk_priya", scoreEffect: 1, feedback: "It's wise to get technical input before locking in solutions." }
+                ],
+                onEnter: () => { playerProblemSummary = "Promised Sarah to prioritize a specific feature to match a competitor, potentially committing too early."; }
+            },
+            priya_acknowledge: {
+                story: "Priya nods, looking somewhat relieved. 'Okay, that's good to hear. If we define the problem well, we can explore solutions that are both impactful and sustainable.'",
+                sceneImagePrompt: "engineer looking relieved, a clear blueprint emerging, collaboration concept between business and tech",
+                characterId: "priya",
+                choices: [ { text: "You've spoken to all key stakeholders. Time to synthesize.", nextScene: "synthesize_initial", scoreEffect: 3, feedback: "You've gathered initial perspectives. The next step is to find patterns and conflicts." } ],
+                onEnter: () => { playerProblemSummary = "Acknowledged Priya's (Engineering) concerns about tech debt and emphasized defining the problem first."; }
+            },
+            priya_dismiss: {
+                story: "Priya looks unconvinced and slightly annoyed. 'Easy for you to say. But 'exciting possibilities' don't build themselves, and they certainly don't fix existing issues.' The conversation ends on a tense note.",
+                sceneImagePrompt: "engineer looking frustrated, gears grinding, miscommunication concept",
+                characterId: "priya",
+                choices: [ { text: "Realize you need to mend this. Try to synthesize what you've heard so far and then re-engage Priya with a clearer problem focus.", nextScene: "synthesize_initial", scoreEffect: 1, feedback: "Acknowledging the misstep is good. Synthesizing might help you approach Priya more constructively." } ],
+                onEnter: () => { playerProblemSummary = "Dismissed Priya's (Engineering) technical concerns, causing tension."; }
+            },
+            synthesize_initial: {
+                story: "You review your notes: David wants innovation for remote team management. Sarah needs quick solutions for onboarding/reporting. Priya is wary of tech debt. There are overlaps and conflicts.",
+                sceneImagePrompt: "messy desk with notes, Venn diagram showing overlapping and conflicting ideas, person thinking deeply, problem synthesis concept",
+                characterId: "narrator",
+                choices: [
+                    { text: "Focus on David's 'remote team management' angle.", nextScene: "focus_david_angle", scoreEffect: 1, feedback: "While strategic, ensure this isn't ignoring immediate, validated user pains Sarah mentioned." },
+                    { text: "Prioritize Sarah's concerns about competitor features.", nextScene: "focus_sarah_angle", scoreEffect: -2, feedback: "Urgency doesn't always mean highest impact or the right problem. This could be reactive." },
+                    { text: "Attempt to define a problem statement that tries to bridge all three perspectives.", nextScene: "attempt_bridge", scoreEffect: 3, feedback: "This is challenging but a good goal. A well-framed problem often considers multiple facets." },
+                    { text: "Decide you need direct user input. Plan user interviews.", nextScene: "plan_user_research", scoreEffect: 5, feedback: "Excellent choice! Direct user input is invaluable for validating assumptions.", miniLesson: "importanceOfUserResearch" }
+                ],
+                reflection: { title: "Initial Synthesis", question: "What are the biggest contradictions in the stakeholder inputs so far? Which stakeholder's perspective do you currently feel has the most evidence or urgency, and why?", context: "Player is synthesizing conflicting inputs from David (CEO), Sarah (Sales), and Priya (Engineering)." },
+                onEnter: () => { playerProblemSummary = "Synthesizing inputs: David (remote team innovation), Sarah (onboarding/reporting fixes, competitor parity), Priya (tech debt)."; }
+            },
+            focus_david_angle: {
+                story: "You decide to lean into David's vision for remote team management innovation. This gives a strategic direction, but Sarah's urgent concerns and Priya's feasibility warnings linger.",
+                sceneImagePrompt: "a single clear path forward with other paths fading, focusing on a distant star, strategic alignment concept",
+                characterId: "narrator",
+                choices: [
+                    { text: "Present this focused direction to the team. ✨", nextScene: "present_synthesized_findings", scoreEffect: 2, feedback: "Presenting your synthesis is a good next step. Be prepared for reactions." }
+                ],
+                onEnter: () => { playerProblemSummary = "Decided to focus on David's (CEO) vision for remote team management innovation."; }
+            },
+            focus_sarah_angle: {
+                story: "You prioritize Sarah's urgent concerns about competitor features and Q3 targets. This might offer a quick win but risks being reactive and not addressing deeper strategic goals or technical sustainability.",
+                sceneImagePrompt: "firefighting imagery, short-term fix, band-aid on a larger problem, reactive strategy",
+                characterId: "narrator",
+                choices: [
+                     { text: "Present this reactive approach to the team. ✨", nextScene: "present_synthesized_findings", scoreEffect: -1, feedback: "Focusing on immediate fires can be necessary, but ensure it aligns with a broader strategy. Let's see how the team reacts." }
+                ],
+                onEnter: () => { playerProblemSummary = "Decided to prioritize Sarah's (Sales) urgent concerns about competitor features and Q3 targets."; }
+            },
+            attempt_bridge: {
+                story: "You try to craft a problem understanding that bridges David's innovation goals, Sarah's market needs, and Priya's technical realities. It's a complex balancing act.",
+                sceneImagePrompt: "person walking a tightrope, balancing scale, connecting puzzle pieces, complex problem solving",
+                characterId: "narrator",
+                choices: [
+                    { text: "Present this bridged understanding to the team. ✨", nextScene: "present_synthesized_findings", scoreEffect: 3, feedback: "Attempting to bridge perspectives is a strong approach. Let's see if your synthesis resonates." }
+                ],
+                onEnter: () => { playerProblemSummary = "Attempting to bridge David's innovation goals, Sarah's market needs, and Priya's technical realities in the problem definition."; }
+            },
+            plan_user_research: {
+                story: "You've decided that direct user input is crucial. How will you approach this?",
+                sceneImagePrompt: "magnifying glass over diverse user icons, survey forms and interview notes, research plan concept, user-centered design",
+                characterId: "narrator",
+                choices: [
+                     { text: "Interview existing customers who recently complained or switched.", nextScene: "user_interview_existing", scoreEffect: 5, feedback: "Targeting users with known pain points is a great way to get specific insights." },
+                     { text: "Survey a broad segment of potential users about remote work challenges.", nextScene: "user_survey_broad", scoreEffect: 3, feedback: "Surveys can give breadth, but interviews often provide more depth. Good for initial exploration."},
+                     { text: "Ask the sales team to summarize what users are saying.", nextScene: "ask_sales_summary", scoreEffect: -2, feedback: "While sales has insights, it's second-hand information. Direct user contact is usually more revealing and less filtered by sales priorities."}
+                ]
+            },
+             user_interview_existing: {
+                story: "You're about to interview a user who expressed frustration with your current product's remote collaboration features. Your goal is to understand their underlying problem, not to pitch solutions.",
+                sceneImagePrompt: "one-on-one video call with a user, empathetic listening, note-taking, user research in progress",
+                characterId: "user_generic",
+                choices: [
+                    { text: "Start by asking: 'Can you walk me through a recent situation where you struggled with remote collaboration using our tool?'", nextScene: "interview_open_question", scoreEffect: 5, feedback: "Excellent open-ended question! This encourages storytelling and reveals context." },
+                    { text: "Ask: 'Would a feature that does X solve your problem?'", nextScene: "interview_solution_pitch", scoreEffect: -4, feedback: "Avoid leading with solutions in user interviews. You're here to understand their problem, not to validate your ideas yet.", miniLesson: "openEndedQuestions" },
+                    { text: "Ask: 'What features do you like about our competitor's product?'", nextScene: "interview_competitor_focus", scoreEffect: 1, feedback: "This can give some information, but keep the focus on *their* problem and workflow, not just a feature comparison." }
+                ],
+                reflection: { title: "User Interview Prep", question: "What are 2-3 key assumptions you have about this user's problems that you hope to validate or invalidate during this interview?", context: "Player is about to interview a frustrated user to understand their problems with remote collaboration." }
+            },
+            interview_open_question: {
+                story: "The user shares a detailed story about struggling to coordinate project updates with their remote team, leading to missed deadlines and frustration. 'It's not just about features,' they say, 'it's about clarity and knowing who's doing what, when.'",
+                sceneImagePrompt: "user expressing frustration during video call, tangled communication lines, missed deadline icon, empathy map snippet",
+                characterId: "user_generic",
+                choices: [
+                    { text: "Ask: 'Tell me more about the impact of these missed deadlines.' (Dig Deeper)", nextScene: "interview_impact", scoreEffect: 5, feedback: "Excellent. Understanding the impact quantifies the problem's severity." },
+                    { text: "Suggest: 'So, a better notification system would help?' (Jump to Solution)", nextScene: "interview_solution_again", scoreEffect: -3, feedback: "Still jumping to solutions. Let the user fully articulate their pain and context first." }
+                ],
+                reflection: { title: "User's Story", question: "The user mentioned 'clarity' and 'knowing who's doing what, when.' How does this connect with what you heard from David, Sarah, or Priya? Are there emerging themes?", context: "User described struggles with project coordination, missed deadlines, and lack of clarity in remote teams." },
+                onEnter: () => { playerProblemSummary = "User interview revealed deep frustrations with remote team coordination, lack of clarity on tasks/progress, leading to missed deadlines."; }
+            },
+            interview_impact: { 
+                story: "The user explains that missed deadlines have led to client dissatisfaction and team stress. The financial and morale costs are significant. 'We need a reliable way to stay aligned without constant meetings.'",
+                sceneImagePrompt: "graph showing declining client satisfaction, stressed team members, financial loss icon",
+                characterId: "user_generic",
+                choices: [{text: "Thank the user and begin synthesizing interview findings.", nextScene: "synthesize_user_findings", scoreEffect: 3, feedback: "You've gathered valuable, deep insights. Time to process them."}],
+                onEnter: () => { playerProblemSummary += " The impact includes client dissatisfaction, team stress, and a desire for reliable alignment without excessive meetings."; }
+            },
+            interview_solution_again: { 
+                story: "The user hesitates, 'Well, maybe, but it's more than just notifications...' You sense you've narrowed the conversation prematurely.",
+                sceneImagePrompt: "user looking hesitant, a closed door, missed opportunity concept",
+                characterId: "user_generic",
+                choices: [{text: "Try to steer back: 'My apologies, let's go back. What's the biggest challenge in knowing who's doing what?'", nextScene: "interview_open_question", scoreEffect: 1, feedback: "Good recovery. It's important to let the user lead when exploring problems."}]
+            },
+            synthesize_user_findings: { 
+                story: "After several user interviews, clear themes are emerging: communication breakdowns, lack of shared understanding of tasks and progress, difficulties in remote coordination, and the negative impact on deadlines and morale.",
+                sceneImagePrompt: "affinity diagram with sticky notes, highlighted themes, data synthesis process",
+                characterId: "narrator",
+                choices: [{text: "Present these synthesized user findings to the team. ✨", nextScene: "present_synthesized_findings", scoreEffect: 5, feedback: "You're now grounding your problem definition in user evidence! Let's see the team's reaction."}],
+                onEnter: () => { playerProblemSummary = "Synthesized user research: key themes are communication breakdowns, lack of shared understanding in remote tasks/progress, leading to missed deadlines and low morale."; }
+            },
+            present_synthesized_findings: {
+                story: async () => {
+                    let baseStory = `You call a meeting with David, Sarah, and Priya. You present your current understanding of the problem: "${playerProblemSummary}".\n\n`;
+                    
+                    // Randomly pick a stakeholder to provide an AI challenge, or a default if AI fails
+                    const challengingStakeholders = ["priya", "sarah", "david"];
+                    const challengerId = challengingStakeholders[Math.floor(Math.random() * challengingStakeholders.length)];
+                    const challenger = characters[challengerId];
+            
+                    showLLMLoading(true);
+                    let aiChallenge = `Suddenly, ${challenger.name} interjects with a thoughtful point... (AI challenge generation failed, using default) "But how does this address my concern about [${challenger.concerns.split(',')[0].trim()}]?"`; // Default challenge
+                    try {
+                        const challengePrompt = `You are ${challenger.name} (${challenger.role}), a stakeholder in the Phoenix Project. Your primary concerns are ${challenger.concerns}. A product strategist has just presented their current understanding of the project's core problem: "${playerProblemSummary}". Respond with a concise (1-2 sentences), insightful challenge or a critical question that this problem summary doesn't yet address from your perspective. Make it sound natural for a stakeholder meeting.`;
+                        const generatedText = await generateTextWithGemini(challengePrompt);
+                        if (generatedText) {
+                           aiChallenge = `${challenger.name} looks thoughtful and says, "Okay, I see where you're going with '${playerProblemSummary.substring(0,50)}...', but ${generatedText}"`;
+                        }
+                    } catch (error) {
+                        console.error("Failed to get AI stakeholder challenge:", error);
+                    } finally {
+                        showLLMLoading(false);
+                    }
+                    return baseStory + aiChallenge;
+                },
+                sceneImagePrompt: "tense meeting room, diverse team members looking at a presentation, one stakeholder raising a hand with a question, dynamic discussion",
+                characterId: "narrator", // Or dynamically set to the challenger
+                choices: [
+                    { text: "Acknowledge the challenge and promise to investigate further.", nextScene: "address_ai_challenge", scoreEffect: 3, feedback: "Good. Acknowledging valid challenges and incorporating them is key to robust problem framing." },
+                    { text: "Defend your current summary strongly, dismissing the challenge.", nextScene: "dismiss_ai_challenge", scoreEffect: -3, feedback: "Being defensive can shut down valuable input. It's better to explore challenges openly." }
+                ],
+                reflection: { title: "Stakeholder Challenge", question: "The AI-generated stakeholder challenge just pushed you to think differently. How does this new perspective affect your understanding of the problem? What might you have missed?", context: "Player just faced an AI-generated challenge to their problem summary from a stakeholder."}
+            },
+             address_ai_challenge: { // Placeholder
+                story: "You acknowledge the stakeholder's point and make a note to explore that angle further. The team seems to appreciate your willingness to adapt and refine the problem definition.",
+                sceneImagePrompt: "person adding a new note to a complex mind map, collaborative problem solving, gears turning smoothly",
+                characterId: "narrator",
+                choices: [{text: "It's time to try and draft a formal problem statement.", nextScene: "draft_problem_statement_final", scoreEffect: 2, feedback: "Incorporating feedback strengthens your eventual problem statement."}],
+                onEnter: () => { playerProblemSummary += " Additionally, need to consider the recent stakeholder challenge regarding their specific concerns."; }
+            },
+            dismiss_ai_challenge: { // Placeholder
+                story: "You try to brush off the stakeholder's concern, but it leaves an awkward tension in the room. They don't seem convinced, and you might have missed a valuable insight.",
+                sceneImagePrompt: "crossed arms, skeptical expressions in a meeting, a cracked foundation, communication breakdown",
+                characterId: "narrator",
+                choices: [{text: "Despite the tension, proceed to draft a problem statement.", nextScene: "draft_problem_statement_final", scoreEffect: -1, feedback: "Ignoring valid concerns can lead to a weaker problem definition and less buy-in."}]
+            },
+            draft_problem_statement_final: { 
+                story: "It's time to draft a concise and impactful problem statement based on all the evidence you've gathered from stakeholders and users, including recent challenges. A good problem statement is human-centered, broad enough for creative freedom, and narrow enough to be manageable.",
+                sceneImagePrompt: "focused person writing at a desk, a clear, concise statement highlighted, problem statement template",
+                characterId: "narrator",
+                choices: [
+                    {text: "Draft: 'Our target users (e.g., remote teams in small businesses) struggle with maintaining clear, consistent communication and shared awareness of project tasks and progress, leading to missed deadlines, decreased productivity, and increased team frustration. This occurs despite existing tools, which are often seen as too complex, siloed, or failing to address the core need for contextual alignment without excessive meetings. We need to solve this to improve their efficiency and job satisfaction, ultimately impacting our customer retention and market position.'", nextScene: "present_problem_statement_final", scoreEffect: 10, feedback: "This is a strong, user-centered problem statement that synthesizes multiple inputs!"},
+                    {text: "Draft: 'We need a new feature for remote team chat to beat competitor X and make David happy.'", nextScene: "present_problem_statement_final_weak", scoreEffect: -10, feedback: "This is solution-focused, not problem-focused, and ignores much of the nuance you've uncovered."}
+                ],
+                miniLesson: "writingProblemStatements",
+                reflection: { title: "Drafting the Statement", question: "Review your drafted problem statement. How well does it reflect the user needs, stakeholder inputs, and the AI challenge you faced? What's the strongest part of it? What could still be improved?", context: "Player is about to finalize their problem statement after all research and synthesis."}
+            },
+            present_problem_statement_final: { // Placeholder for a positive outcome
+                 story: "You present your well-researched and synthesized problem statement. David, Sarah, and Priya all nod in agreement. 'This finally feels like we're all on the same page about what we're trying to solve,' David says. Your Clarity Score is high!",
+                 sceneImagePrompt: "team members smiling and nodding in a meeting, a clear path forward, a completed puzzle, success concept",
+                 characterId: "narrator",
+                 choices: [ { text: "Congratulations! Restart Game?", nextScene: "start", scoreEffect: 0, feedback: "You've successfully framed the problem!"} ]
+            },
+            present_problem_statement_final_weak: { // Placeholder for a weaker outcome
+                 story: "You present your problem statement. There are hesitant looks. 'It still feels a bit like we're jumping to a solution,' Priya mentions. 'And does it really capture the strategic opportunity?' asks David. Your Clarity Score reflects the remaining ambiguity.",
+                 sceneImagePrompt: "confused and skeptical faces in a meeting, a tangled path, question marks, misalignment concept",
+                 characterId: "narrator",
+                 choices: [ { text: "Back to the drawing board... Restart Game?", nextScene: "start", scoreEffect: 0, feedback: "Problem framing is iterative. Good effort, try again to achieve greater clarity!"} ]
+            },
+            end_game_placeholder: {
+                 story: "This is a placeholder for a later part of the game. More content coming soon!",
+                 sceneImagePrompt: "road splitting into many paths, question mark, construction sign, work in progress concept",
+                 characterId: "narrator",
+                 choices: [
+                    { text: "Restart Game", nextScene: "start", scoreEffect: 0, feedback: "Restarting the journey!"}
+                 ]
+            }
+        };
+        
+        const miniLessons = {
+            solutionBias: {
+                title: "Beware of Solution Bias",
+                content: `<p>It's natural to want to jump to solutions. However, <strong>Solution Bias</strong> is a common trap where we latch onto a solution before fully understanding the problem.</p>
+                          <p>Effective problem framing requires resisting this. Focus on deeply understanding user needs, gathering diverse perspectives, and asking 'why' multiple times.</p>`
+            },
+            rootCauseVsSymptom: {
+                title: "Root Cause vs. Symptom",
+                content: `<p>Stakeholders often describe <strong>symptoms</strong> (e.g., "losing deals due to missing feature X"), not the <strong>root cause</strong>.</p>
+                          <p>Your goal is to dig beneath symptoms to identify the core problem. Feature X might be a symptom of poor onboarding or inefficient workflows.</p>`
+            },
+            importanceOfUserResearch: {
+                title: "The Power of User Research",
+                content: `<p>Direct user research is irreplaceable for uncovering genuine user needs, behaviors, and pain points. Internal perspectives can be skewed. Users provide the ground truth.</p>
+                          <p>It helps validate assumptions, discover unmet needs, build empathy, and gather evidence for your problem definition.</p>`
+            },
+            openEndedQuestions: {
+                title: "The Art of Open-Ended Questions",
+                content: `<p>Open-ended questions (starting with "What," "How," "Why," "Tell me about...") are more effective than closed (yes/no) or leading questions.</p>
+                          <p>They encourage detailed responses, storytelling, and unexpected insights, crucial for information gathering.</p>`
+            },
+            writingProblemStatements: { 
+                title: "Crafting Effective Problem Statements",
+                content: `<p>A well-crafted problem statement is human-centered, broad enough for creativity, narrow enough to be manageable, and based on evidence.</p>
+                          <p>Template: "[User type] needs a way to [user's need] so that they can [user's goal/benefit]. Current solutions fail because [pain point/gap]."</p>
+                          <p>Example: "Remote software teams need a way to maintain shared awareness of task progress so they can coordinate effectively. Current tools often lead to information silos, causing delays."</p>`
+            }
+        };
+
+        // --- Game State ---
+        let currentSceneId = 'start';
+        let clarityScore = 0;
+        let imageCache = {}; 
+
+        // --- UI Elements ---
+        const storyTextElement = document.getElementById('storyText');
+        const choicesAreaElement = document.getElementById('choicesArea');
+        const clarityScoreElement = document.getElementById('clarityScore');
+        const feedbackAreaElement = document.getElementById('feedbackArea');
+        const sceneImageElement = document.getElementById('sceneImage');
+        const characterImageElement = document.getElementById('characterImage');
+        const characterNameElement = document.getElementById('characterName');
+        
+        const sceneImageSpinner = document.getElementById('sceneImageSpinner');
+        const characterImageSpinner = document.getElementById('characterImageSpinner');
+
+        const reflectionModal = document.getElementById('reflectionModal');
+        const reflectionTitleElement = document.getElementById('reflectionTitle');
+        const reflectionQuestionElement = document.getElementById('reflectionQuestion');
+        const reflectionAnswerElement = document.getElementById('reflectionAnswer');
+        const submitReflectionButton = document.getElementById('submitReflection');
+        const reflectionModalCloseButton = document.getElementById('reflectionModalClose');
+        
+        const miniLessonModal = document.getElementById('miniLessonModal');
+        const miniLessonTitleElement = document.getElementById('miniLessonTitle');
+        const miniLessonContentElement = document.getElementById('miniLessonContent');
+        const closeMiniLessonButton = document.getElementById('closeMiniLesson');
+        const miniLessonModalCloseButton = document.getElementById('miniLessonModalClose');
+
+        const aiMentorFeedbackAreaElement = document.getElementById('aiMentorFeedbackArea');
+        const aiMentorTextElement = document.getElementById('aiMentorText');
+        const llmLoadingIndicatorElement = document.getElementById('llmLoadingIndicator');
+
+        let afterModalCallback = null; 
+        let currentReflectionContext = ""; // To store context for AI Mentor
+
+        // --- LLM & Image Generation ---
+        const geminiApiKey = ""; // For gemini-2.0-flash (text)
+        const imagenApiKey = ""; // For imagen-3.0-generate-002 (images)
+
+        function showLLMLoading(isLoading) {
+            llmLoadingIndicatorElement.style.display = isLoading ? 'flex' : 'none';
+        }
+
+        async function generateTextWithGemini(prompt) {
+            showLLMLoading(true);
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+            let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+            const payload = { contents: chatHistory };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const errorBody = await response.text();
+                    console.error("Gemini API error:", response.status, errorBody);
+                    throw new Error(`Gemini API request failed: ${response.status} ${errorBody}`);
+                }
+                const result = await response.json();
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    return result.candidates[0].content.parts[0].text;
+                } else {
+                    console.error("Gemini API unexpected response structure:", result);
+                    return "I'm having a little trouble formulating a thought right now. Let's proceed.";
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                return "My apologies, I couldn't connect to generate a deeper insight just now. Please continue.";
+            } finally {
+                showLLMLoading(false);
+            }
+        }
+        
+        async function generateImage(prompt, type) { 
+            const cacheKey = `${type}_${prompt}`;
+            if (imageCache[cacheKey]) {
+                return imageCache[cacheKey];
+            }
+            const spinner = type === 'scene' ? sceneImageSpinner : characterImageSpinner;
+            spinner.style.display = 'flex';
+
+            try {
+                const payload = { instances: [{ prompt: prompt }], parameters: { "sampleCount": 1 } };
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${imagenApiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const errorBody = await response.text(); 
+                    console.error(`Imagen API error: ${response.status}`, errorBody); 
+                    throw new Error(`API request failed: ${response.status} ${errorBody}`);
+                }
+                const result = await response.json();
+                if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                    const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                    imageCache[cacheKey] = imageUrl; 
+                    return imageUrl;
+                } else {
+                    console.error("Imagen API unexpected response:", result);
+                    throw new Error("No image data in Imagen API response.");
+                }
+            } catch (error) {
+                console.error(`Error generating ${type} image:`, error);
+                return `https://placehold.co/600x400/334155/cbd5e1?text=Error+Loading+Image`;
+            } finally {
+                spinner.style.display = 'none';
+            }
+        }
+
+        // --- Game Logic ---
+        function updateScore(change) {
+            clarityScore += change;
+            clarityScoreElement.textContent = clarityScore;
+        }
+
+        function showFeedback(message, isAIMentor = false) {
+            if (isAIMentor) {
+                aiMentorTextElement.innerHTML = message;
+                aiMentorFeedbackAreaElement.style.display = 'block';
+                feedbackAreaElement.style.display = 'none'; // Hide normal feedback if AI mentor is speaking
+            } else {
+                feedbackAreaElement.innerHTML = message;
+                feedbackAreaElement.style.display = 'block';
+                aiMentorFeedbackAreaElement.style.display = 'none'; // Hide AI mentor if normal feedback
+            }
+        }
+
+        async function renderScene() {
+            const scene = gameScenes[currentSceneId];
+            if (!scene) {
+                console.error("Scene not found:", currentSceneId);
+                storyTextElement.textContent = "Error: Scene not found."; return;
+            }
+
+            // Execute onEnter function for the scene if it exists
+            if (typeof scene.onEnter === 'function') {
+                scene.onEnter();
+            }
+            
+            aiMentorFeedbackAreaElement.style.display = 'none'; // Hide AI mentor feedback by default on new scene
+
+            // Story text - handle async story functions (for LLM content)
+            if (typeof scene.story === 'function') {
+                storyTextElement.innerHTML = "Loading scene details..."; // Placeholder
+                try {
+                    const dynamicStory = await scene.story(); // Await if it's an async function
+                    storyTextElement.innerHTML = dynamicStory;
+                } catch (error) {
+                    console.error("Error rendering dynamic story:", error);
+                    storyTextElement.innerHTML = "There was an issue loading parts of this scene. Please proceed.";
+                }
+            } else {
+                storyTextElement.innerHTML = scene.story;
+            }
+            
+            if (scene.sceneImagePrompt) {
+                sceneImageElement.src = `https://placehold.co/600x400/334155/cbd5e1?text=Loading+Scene...`;
+                generateImage(scene.sceneImagePrompt, 'scene').then(url => sceneImageElement.src = url);
+            } else {
+                sceneImageElement.src = 'https://placehold.co/600x400/334155/cbd5e1?text=Scene';
+                sceneImageSpinner.style.display = 'none';
+            }
+
+            const character = characters[scene.characterId] || characters.narrator;
+            characterNameElement.textContent = character.name;
+            if (scene.characterId && scene.characterId !== "narrator" && character.prompt) {
+                characterImageElement.src = `https://placehold.co/300x400/334155/cbd5e1?text=Loading...`;
+                characterImageElement.style.display = 'block';
+                characterNameElement.style.display = 'block';
+                generateImage(character.prompt, 'character').then(url => characterImageElement.src = url);
+            } else {
+                characterImageElement.style.display = 'none'; 
+                characterNameElement.style.display = 'none';
+                characterImageSpinner.style.display = 'none';
+            }
+
+            choicesAreaElement.innerHTML = ""; 
+            scene.choices.forEach(choice => {
+                const button = document.createElement('button');
+                button.className = "w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md choice-button text-sm md:text-base";
+                button.innerHTML = choice.text; 
+                button.onclick = () => makeChoice(choice);
+                choicesAreaElement.appendChild(button);
+            });
+
+            if (!aiMentorFeedbackAreaElement.style.display || aiMentorFeedbackAreaElement.style.display === 'none') {
+                 feedbackAreaElement.style.display = 'none'; // Hide normal feedback if AI mentor isn't shown
+            }
+        }
+
+        function makeChoice(choice) {
+            updateScore(choice.scoreEffect);
+            showFeedback(choice.feedback); // Show normal feedback first
+
+            const currentSceneData = gameScenes[currentSceneId]; 
+
+            let nextAction = () => {
+                currentSceneId = choice.nextScene || 'end_game_placeholder'; 
+                renderScene();
+            };
+            
+            if (choice.miniLesson && miniLessons[choice.miniLesson]) {
+                showMiniLesson(choice.miniLesson, nextAction);
+            } else if (currentSceneData.reflection) { 
+                currentReflectionContext = currentSceneData.reflection.context || ""; // Store context for AI mentor
+                showReflectionModal(currentSceneData.reflection, nextAction);
+            }
+            else {
+                nextAction(); 
+            }
+        }
+        
+        async function getAndShowAIMentorFeedback(reflectionText, playerContext) {
+            const prompt = `You are Alex, a wise and encouraging product strategy mentor. The player is working on the 'Phoenix Project,' trying to define the core problem. 
+            Their current understanding of the problem/situation is: "${playerProblemSummary}".
+            They were just asked to reflect on: "${playerContext}".
+            Their reflection was: "${reflectionText}". 
+            Provide concise (2-4 sentences), insightful, and actionable feedback. Focus on problem framing principles. Avoid just repeating their reflection. Offer a new perspective or a guiding question.`;
+            
+            showLLMLoading(true);
+            const aiFeedback = await generateTextWithGemini(prompt);
+            showLLMLoading(false);
+            showFeedback(aiFeedback, true); // true for AI Mentor feedback
+        }
+
+        function showReflectionModal(reflectionData, callback) {
+            reflectionTitleElement.textContent = reflectionData.title;
+            reflectionQuestionElement.textContent = reflectionData.question;
+            reflectionAnswerElement.value = ""; 
+            reflectionModal.style.display = "flex";
+            afterModalCallback = async () => { // Make this async to await AI feedback
+                const answer = reflectionAnswerElement.value;
+                console.log("Reflection Answer:", answer);
+                // Get AI Mentor Feedback
+                if (answer.trim() !== "") {
+                    await getAndShowAIMentorFeedback(answer, currentReflectionContext);
+                } else {
+                     aiMentorFeedbackAreaElement.style.display = 'none'; // Hide if no answer
+                }
+                if (callback) callback(); // Continue to next scene/action
+            };
+        }
+
+        submitReflectionButton.onclick = async () => {
+            reflectionModal.style.display = "none";
+            if (afterModalCallback) {
+                await afterModalCallback(); // Await because it now includes an async call
+                afterModalCallback = null; 
+            }
+        };
+        
+        reflectionModalCloseButton.onclick = async () => {
+            reflectionModal.style.display = "none";
+             aiMentorFeedbackAreaElement.style.display = 'none'; // Hide AI mentor feedback if modal is just closed
+            if (afterModalCallback) {
+                // Don't call getAIMentorFeedback if just closing, proceed with original callback
+                const originalCallback = afterModalCallback;
+                afterModalCallback = null; 
+                // We need to reconstruct the original callback if it was to proceed to next scene without AI part
+                if (originalCallback.toString().includes("getAndShowAIMentorFeedback")) {
+                    // This is tricky. The original callback was wrapped.
+                    // For simplicity now, if closed, just proceed to next scene if one was defined.
+                    // This means AI feedback is skipped if modal is closed via 'X'
+                    const scene = gameScenes[currentSceneId];
+                    const choiceThatLedToReflection = scene.choices.find(c => gameScenes[c.nextScene]?.reflection === scene.reflection || scene.reflection); // Heuristic
+                    if(choiceThatLedToReflection && choiceThatLedToReflection.nextScene) {
+                         currentSceneId = choiceThatLedToReflection.nextScene;
+                         renderScene();
+                    } else if (scene.choices[0] && scene.choices[0].nextScene) { // Fallback
+                        currentSceneId = scene.choices[0].nextScene;
+                        renderScene();
+                    }
+
+                } else {
+                     await originalCallback(); // If it was a simple next scene callback
+                }
+            }
+        };
+
+        function showMiniLesson(lessonId, callback) {
+            const lesson = miniLessons[lessonId];
+            if (!lesson) {
+                if (callback) callback();
+                return;
+            }
+            miniLessonTitleElement.textContent = lesson.title;
+            miniLessonContentElement.innerHTML = lesson.content;
+            miniLessonModal.style.display = "flex";
+            afterModalCallback = callback; 
+        }
+
+        closeMiniLessonButton.onclick = () => {
+            miniLessonModal.style.display = "none";
+            if (afterModalCallback) {
+                afterModalCallback();
+                afterModalCallback = null; 
+            }
+        };
+        miniLessonModalCloseButton.onclick = () => {
+            miniLessonModal.style.display = "none";
+            if (afterModalCallback) {
+                afterModalCallback();
+                afterModalCallback = null; 
+            }
+        };
+
+        window.onclick = async function(event) { // Make async for potential callback
+            if (event.target == reflectionModal) {
+                reflectionModal.style.display = "none";
+                aiMentorFeedbackAreaElement.style.display = 'none';
+                // Similar logic to reflectionModalCloseButton
+                if (afterModalCallback) {
+                    const originalCallback = afterModalCallback;
+                    afterModalCallback = null;
+                     if (originalCallback.toString().includes("getAndShowAIMentorFeedback")) {
+                         const scene = gameScenes[currentSceneId];
+                         const choiceThatLedToReflection = scene.choices.find(c => gameScenes[c.nextScene]?.reflection === scene.reflection || scene.reflection);
+                         if(choiceThatLedToReflection && choiceThatLedToReflection.nextScene) {
+                            currentSceneId = choiceThatLedToReflection.nextScene;
+                            renderScene();
+                         } else if (scene.choices[0] && scene.choices[0].nextScene) {
+                            currentSceneId = scene.choices[0].nextScene;
+                            renderScene();
+                         }
+                    } else {
+                        await originalCallback();
+                    }
+                }
+            }
+            if (event.target == miniLessonModal) {
+                miniLessonModal.style.display = "none";
+                if (afterModalCallback) {
+                    afterModalCallback();
+                    afterModalCallback = null;
+                }
+            }
+        }
+
+        // --- Initialize Game ---
+        updateScore(0); 
+        renderScene();
+    </script>
+</body>
+</html>
